@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "732965232392",
+    "project_id": "app-yitadee",
+    "storage_bucket": "app-yitadee.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:732965232392:android:1705ad63eef48fc39416bd",
+        "android_client_info": {
+          "package_name": "com.gotitmaderecords.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB3deIjVCmV-UhJeDUzsp7qSHAylk0KpB8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

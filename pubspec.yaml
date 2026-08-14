@@ -1,0 +1,52 @@
+name: yitadee_app
+description: "A new Flutter project."
+publish_to: 'none'
+
+version: 2.1.4+14
+
+environment:
+  sdk: ^3.11.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons:          ^1.0.8
+  firebase_core:            ^3.0.0
+  firebase_auth:            ^5.0.0
+  cloud_firestore:          ^5.0.0
+  firebase_messaging:       ^15.0.0
+  shared_preferences:       ^2.2.3
+  image_picker:             ^1.1.2
+  image:                    ^4.1.7
+  path_provider:            ^2.1.4
+  http:                     ^1.2.0
+  crypto:                   ^3.0.3
+  intl:                     ^0.19.0
+  permission_handler:       ^11.3.1
+  file_picker:              ^8.1.2   
+  just_audio:               ^0.9.40  
+  audioplayers:             ^6.0.0  
+  just_audio_background:    ^0.0.1-beta.12  
+  audio_session:            ^0.1.21  
+  webview_flutter:          ^4.8.0
+  url_launcher:             ^6.3.0
+  in_app_purchase:          ^3.2.0
+  in_app_purchase_android:  ^0.3.6
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_launcher_icons:   ^0.13.1
+  flutter_lints:            ^5.0.0   
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  remove_alpha_ios: true
+  image_path: "assets/icon/yitadee_icon.png"
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/icon/
+    - assets/images/
