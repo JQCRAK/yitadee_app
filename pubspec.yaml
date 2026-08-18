@@ -2,7 +2,7 @@ name: yitadee_app
 description: "A new Flutter project."
 publish_to: 'none'
 
-version: 2.1.4+14
+version: 2.1.5+15
 
 environment:
   sdk: ^3.11.0
@@ -30,8 +30,8 @@ dependencies:
   audio_session:            ^0.1.21  
   webview_flutter:          ^4.8.0
   url_launcher:             ^6.3.0
-  in_app_purchase:          ^3.2.0
-  in_app_purchase_android:  ^0.3.6
+  in_app_purchase:          ^3.2.3
+  in_app_purchase_android:  ^0.5.2
 
 dev_dependencies:
   flutter_test:

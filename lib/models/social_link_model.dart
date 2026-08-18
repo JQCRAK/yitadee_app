@@ -6,15 +6,31 @@ enum SocialPlatform {
   youtube,
   instagram,
   tiktok,
-  paypal;
+  paypal,
+  facebook,
+  twitter,
+  spotify,
+  soundcloud,
+  appleMusic,
+  discord,
+  whatsapp,
+  website;
 
   String get label => switch (this) {
-    SocialPlatform.shopify   => 'Shopify',
-    SocialPlatform.twitch    => 'Twitch',
-    SocialPlatform.youtube   => 'YouTube',
-    SocialPlatform.instagram => 'Instagram',
-    SocialPlatform.tiktok    => 'TikTok',
-    SocialPlatform.paypal    => 'PayPal',
+    SocialPlatform.shopify    => 'Shopify',
+    SocialPlatform.twitch     => 'Twitch',
+    SocialPlatform.youtube    => 'YouTube',
+    SocialPlatform.instagram  => 'Instagram',
+    SocialPlatform.tiktok     => 'TikTok',
+    SocialPlatform.paypal     => 'PayPal',
+    SocialPlatform.facebook   => 'Facebook',
+    SocialPlatform.twitter    => 'X (Twitter)',
+    SocialPlatform.spotify    => 'Spotify',
+    SocialPlatform.soundcloud => 'SoundCloud',
+    SocialPlatform.appleMusic => 'Apple Music',
+    SocialPlatform.discord    => 'Discord',
+    SocialPlatform.whatsapp   => 'WhatsApp',
+    SocialPlatform.website    => 'Sitio Web',
   };
 
   String get value => name;

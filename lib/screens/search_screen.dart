@@ -1,13 +1,15 @@
+import 'dart:async';
+import 'package:url_launcher/url_launcher.dart';
+import '../models/social_link_model.dart';
+import '../services/social_link_service.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../../core/app_theme.dart';
 import '../../models/song_model.dart';
 import '../../models/album_model.dart';
 import '../../services/player_service.dart';
 import '../../services/favorites_service.dart';
 import '../../services/purchase_service.dart';
-import '../../services/merch_banner_service.dart';
 import 'music/album_detail_screen.dart';
 import 'music/full_player_screen.dart';
 
@@ -88,9 +90,6 @@ class _SearchScreenState extends State<SearchScreen>
   List<AlbumModel> _featured         = [];
   bool             _loadingDiscovery = true;
 
-  String? _shopifyUrl;
-  bool    _bannerLoaded = false;
-
   @override
   bool get wantKeepAlive => true;
 
@@ -99,9 +98,8 @@ class _SearchScreenState extends State<SearchScreen>
     super.initState();
     PlayerService.instance.addListener(_rebuild);
     FavoritesService.instance.addListener(_rebuild);
-    PurchaseService.instance.addListener(_rebuild); // ← NEW
+    PurchaseService.instance.addListener(_rebuild);
     _loadDiscovery();
-    _loadBannerUrl();
   }
 
   void _rebuild() { if (mounted) setState(() {}); }
@@ -113,13 +111,8 @@ class _SearchScreenState extends State<SearchScreen>
     _scroll.dispose();
     PlayerService.instance.removeListener(_rebuild);
     FavoritesService.instance.removeListener(_rebuild);
-    PurchaseService.instance.removeListener(_rebuild); // ← NEW
+    PurchaseService.instance.removeListener(_rebuild);
     super.dispose();
-  }
-
-  Future<void> _loadBannerUrl() async {
-    final url = await MerchBannerService.instance.fetchShopifyUrl();
-    if (mounted) setState(() { _shopifyUrl = url ?? ''; _bannerLoaded = true; });
   }
 
   Future<void> _loadDiscovery() async {
@@ -168,7 +161,6 @@ class _SearchScreenState extends State<SearchScreen>
 
   // ── Play logic — checks unlock state before showing paywall ──────────────
   void _playSong(SongModel song, List<SongModel> pool) {
-    // Song is paid AND not unlocked → show paywall
     if (song.isPaid && !PurchaseService.instance.isUnlocked(song.id)) {
       _showSongPaywall(song);
       return;
@@ -177,7 +169,6 @@ class _SearchScreenState extends State<SearchScreen>
       _openAlbumForSong(song);
       return;
     }
-    // Only free + unlocked singles in the queue
     final playable = pool
         .where((s) => s.isSingle &&
             (!s.isPaid || PurchaseService.instance.isUnlocked(s.id)))
@@ -213,16 +204,6 @@ class _SearchScreenState extends State<SearchScreen>
     );
   }
 
-  Future<void> _launch(String url) async {
-    final uri = Uri.tryParse(url.trim());
-    if (uri == null) return;
-    try {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } catch (_) {
-      await launchUrl(uri);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     super.build(context);
@@ -247,9 +228,6 @@ class _SearchScreenState extends State<SearchScreen>
                     onPlaySong:    _playSong,
                     onOpenAlbum:   _openAlbum,
                     onShowPaywall: _showSongPaywall,
-                    bannerLoaded:  _bannerLoaded,
-                    shopifyUrl:    _shopifyUrl,
-                    onLaunch:      _launch,
                   )
                 : _DiscoveryBody(
                     loading:      _loadingDiscovery,
@@ -258,9 +236,6 @@ class _SearchScreenState extends State<SearchScreen>
                     onPlay:       _playSong,
                     onAlbum:      _openAlbum,
                     onPaywall:    _showSongPaywall,
-                    bannerLoaded: _bannerLoaded,
-                    shopifyUrl:   _shopifyUrl,
-                    onLaunch:     _launch,
                   ),
           ),
         ],
@@ -353,9 +328,6 @@ class _DiscoveryBody extends StatelessWidget {
     required this.onPlay,
     required this.onAlbum,
     required this.onPaywall,
-    required this.bannerLoaded,
-    required this.shopifyUrl,
-    required this.onLaunch,
   });
 
   final bool              loading;
@@ -364,9 +336,6 @@ class _DiscoveryBody extends StatelessWidget {
   final void Function(SongModel, List<SongModel>) onPlay;
   final void Function(AlbumModel)                 onAlbum;
   final void Function(SongModel)                  onPaywall;
-  final bool                                      bannerLoaded;
-  final String?                                   shopifyUrl;
-  final void Function(String)                     onLaunch;
 
   @override
   Widget build(BuildContext context) {
@@ -446,11 +415,9 @@ class _DiscoveryBody extends StatelessWidget {
           ),
         ),
 
-        if (bannerLoaded) ...[
-          const _Divider(),
-          _SearchMerchBanner(shopifyUrl: shopifyUrl, onLaunch: onLaunch),
-          const SizedBox(height: 8),
-        ],
+        const _Divider(),
+        const _BrandBanner(),
+        const SizedBox(height: 8),
       ],
     );
   }
@@ -468,9 +435,6 @@ class _SearchResults extends StatelessWidget {
     required this.onPlaySong,
     required this.onOpenAlbum,
     required this.onShowPaywall,
-    required this.bannerLoaded,
-    required this.shopifyUrl,
-    required this.onLaunch,
   });
 
   final String             query;
@@ -480,9 +444,6 @@ class _SearchResults extends StatelessWidget {
   final void Function(SongModel, List<SongModel>) onPlaySong;
   final void Function(AlbumModel)                 onOpenAlbum;
   final void Function(SongModel)                  onShowPaywall;
-  final bool                                      bannerLoaded;
-  final String?                                   shopifyUrl;
-  final void Function(String)                     onLaunch;
 
   bool get _empty => songs.isEmpty && albums.isEmpty;
 
@@ -579,117 +540,202 @@ class _SearchResults extends StatelessWidget {
           )),
         ],
 
-        if (bannerLoaded) ...[
-          const _Divider(),
-          _SearchMerchBanner(shopifyUrl: shopifyUrl, onLaunch: onLaunch),
-          const SizedBox(height: 8),
-        ],
+        const _Divider(),
+        const _BrandBanner(),
+        const SizedBox(height: 8),
       ],
     );
   }
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// MERCH BANNER
+// BRAND BANNER (carrusel: logos + redes sociales)
 // ══════════════════════════════════════════════════════════════════════════════
-class _SearchMerchBanner extends StatelessWidget {
-  const _SearchMerchBanner({required this.shopifyUrl, required this.onLaunch});
-  final String?               shopifyUrl;
-  final void Function(String) onLaunch;
+class _BrandBanner extends StatefulWidget {
+  const _BrandBanner();
+  @override
+  State<_BrandBanner> createState() => _BrandBannerState();
+}
 
-  Future<void> _handleTap(BuildContext ctx) async {
-    final url = shopifyUrl;
-    if (url == null || url.isEmpty) {
-      ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
-        backgroundColor: AppColors.surface,
-        behavior: SnackBarBehavior.floating,
-        margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-          side: BorderSide(
-              color: AppColors.primary.withValues(alpha: 0.25)),
-        ),
-        content: Row(children: [
-          ShaderMask(
-            shaderCallback: (b) => const LinearGradient(
-                colors: [AppColors.accent, AppColors.primary])
-                .createShader(b),
-            child: const Icon(Icons.rocket_launch_rounded,
-                color: Colors.white, size: 18),
-          ),
-          const SizedBox(width: 10),
-          const Expanded(child: Text(
-            'Merch store coming soon! Stay tuned.',
-            style: TextStyle(
-                color:      AppColors.textPrimary,
-                fontSize:   12,
-                fontWeight: FontWeight.w600),
-          )),
-        ]),
-        duration: const Duration(seconds: 3),
-      ));
-      return;
-    }
-    onLaunch(url);
+class _BrandBannerState extends State<_BrandBanner> {
+  final _pageCtrl = PageController();
+  Timer? _timer;
+  List<SocialLinkModel> _links = [];
+  int _page = 0;
+
+  static const _icons = <SocialPlatform, IconData>{
+    SocialPlatform.shopify: Icons.storefront_rounded,
+    SocialPlatform.twitch: Icons.live_tv_rounded,
+    SocialPlatform.youtube: Icons.play_circle_rounded,
+    SocialPlatform.instagram: Icons.camera_alt_rounded,
+    SocialPlatform.tiktok: Icons.music_video_rounded,
+    SocialPlatform.paypal: Icons.payment_rounded,
+    SocialPlatform.facebook: Icons.facebook_rounded,
+    SocialPlatform.twitter: Icons.alternate_email_rounded,
+    SocialPlatform.spotify: Icons.graphic_eq_rounded,
+    SocialPlatform.soundcloud: Icons.cloud_queue_rounded,
+    SocialPlatform.appleMusic: Icons.apple_rounded,
+    SocialPlatform.discord: Icons.forum_rounded,
+    SocialPlatform.whatsapp: Icons.chat_rounded,
+    SocialPlatform.website: Icons.language_rounded,
+  };
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLinks();
+  }
+
+  Future<void> _loadLinks() async {
+    final list = await SocialLinkService.instance.fetchAll();
+    if (!mounted) return;
+    setState(() => _links = list);
+    _startAutoScroll();
+  }
+
+  void _startAutoScroll() {
+    _timer?.cancel();
+    final totalPages = 2 + _links.length;
+    if (totalPages <= 1) return;
+    _timer = Timer.periodic(const Duration(seconds: 4), (_) {
+      if (!_pageCtrl.hasClients) return;
+      final next = (_page + 1) % totalPages;
+      _pageCtrl.animateToPage(next,
+          duration: const Duration(milliseconds: 500), curve: Curves.easeOutCubic);
+    });
+  }
+
+  Future<void> _openLink(String url) async {
+    final uri = Uri.tryParse(url);
+    if (uri == null) return;
+    if (await canLaunchUrl(uri)) await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _pageCtrl.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () => _handleTap(context),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: Stack(
-          children: [
-            AspectRatio(
-              aspectRatio: 16 / 5,
-              child: Container(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                        color:      Colors.black.withValues(alpha: 0.45),
-                        blurRadius: 18,
-                        offset:     const Offset(0, 6)),
-                    BoxShadow(
-                        color:      AppColors.primary.withValues(alpha: 0.12),
-                        blurRadius: 24,
-                        offset:     const Offset(0, 4)),
-                  ],
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(16),
-                  child: Image.asset(
-                    'assets/images/merch_banner.png',
-                    
-                    fit: BoxFit.cover,
-                  ),
-                ),
-              ),
-            ),
-            if (shopifyUrl == null || shopifyUrl!.isEmpty)
-              Positioned(
-                top: 10, right: 10,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color:        Colors.black.withValues(alpha: 0.65),
-                    borderRadius: BorderRadius.circular(6),
-                    border: Border.all(
-                        color:
-                            AppColors.surfaceLight.withValues(alpha: 0.4)),
-                  ),
-                  child: const Text('Coming Soon',
-                    style: TextStyle(
-                        color:         AppColors.textSecondary,
-                        fontSize:      9,
-                        fontWeight:    FontWeight.w700,
-                        letterSpacing: 0.5)),
-                ),
-              ),
-          ],
+    final totalPages = 2 + _links.length;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Column(children: [
+        SizedBox(
+          height: 100,
+          child: PageView.builder(
+            controller: _pageCtrl,
+            itemCount: totalPages,
+            onPageChanged: (i) => setState(() => _page = i),
+            itemBuilder: (ctx, i) {
+              if (i == 0) return const _YitadeeLogoCard();
+              if (i == 1) return const _GotItMadeLogoCard();
+              final link = _links[i - 2];
+              return _SocialCarouselCard(
+                link: link,
+                icon: _icons[link.platform] ?? Icons.link_rounded,
+                onTap: () => _openLink(link.url),
+              );
+            },
+          ),
         ),
+        if (totalPages > 1) ...[
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: List.generate(totalPages, (i) => AnimatedContainer(
+              duration: const Duration(milliseconds: 250),
+              margin: const EdgeInsets.symmetric(horizontal: 3),
+              width: i == _page ? 16 : 6,
+              height: 6,
+              decoration: BoxDecoration(
+                color: i == _page ? AppColors.primary : AppColors.surfaceLight,
+                borderRadius: BorderRadius.circular(3),
+              ),
+            )),
+          ),
+        ],
+      ]),
+    );
+  }
+}
+
+BoxDecoration _brandCardDecoration() => BoxDecoration(
+  borderRadius: BorderRadius.circular(18),
+  color: Colors.black,
+  border: Border.all(color: AppColors.primary.withValues(alpha: 0.18)),
+  boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.35), blurRadius: 16, offset: const Offset(0, 6))],
+);
+
+// ─── Tarjeta 1: logo YITADEE ────────────────────────────────────────────────
+class _YitadeeLogoCard extends StatelessWidget {
+  const _YitadeeLogoCard();
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+      decoration: _brandCardDecoration(),
+      child: Center(
+        child: SizedBox(
+          height: 80,
+          child: Image.asset('assets/images/yitadee_logo.png', fit: BoxFit.contain),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Tarjeta 2: logo GOT IT MADE RECORDS ───────────────────────────────────
+class _GotItMadeLogoCard extends StatelessWidget {
+  const _GotItMadeLogoCard();
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+      decoration: _brandCardDecoration(),
+      child: Center(
+        child: SizedBox(
+          height: 100,
+          child: Image.asset('assets/images/got_it_made_logo.png', fit: BoxFit.contain),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Tarjeta de red social dentro del carrusel ────────────────────────────────
+class _SocialCarouselCard extends StatelessWidget {
+  const _SocialCarouselCard({required this.link, required this.icon, required this.onTap});
+  final SocialLinkModel link;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 20),
+        decoration: _brandCardDecoration(),
+        child: Row(children: [
+          Container(
+            width: 46, height: 46,
+            decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.black,
+              border: Border.fromBorderSide(BorderSide(color: AppColors.primary, width: 1.4))),
+            child: Icon(icon, color: AppColors.primary, size: 22),
+          ),
+          const SizedBox(width: 14),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+            Text('Follow us on ${link.displayLabel}',
+              style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w800, fontSize: 14)),
+            const SizedBox(height: 4),
+            Text(link.url, style: const TextStyle(color: AppColors.textSecondary, fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis),
+          ])),
+          const Icon(Icons.open_in_new_rounded, color: AppColors.primary, size: 18),
+        ]),
       ),
     );
   }
@@ -742,7 +788,6 @@ class _TrendingSongRow extends StatelessWidget {
         ),
         child: Row(
           children: [
-            // Rank
             SizedBox(
               width: 28,
               child: isActive
@@ -764,7 +809,6 @@ class _TrendingSongRow extends StatelessWidget {
             ),
             const SizedBox(width: 8),
 
-            // Cover
             Stack(clipBehavior: Clip.none, children: [
               ClipRRect(
                 borderRadius: BorderRadius.circular(9),
@@ -798,7 +842,6 @@ class _TrendingSongRow extends StatelessWidget {
             ]),
             const SizedBox(width: 10),
 
-            // Info
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -849,7 +892,6 @@ class _TrendingSongRow extends StatelessWidget {
             ),
             const SizedBox(width: 8),
 
-            // Right: plays + fav + button
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               mainAxisSize:       MainAxisSize.min,
@@ -985,7 +1027,6 @@ class _SearchSongRow extends StatelessWidget {
         ),
         child: Row(
           children: [
-            // Cover
             Stack(clipBehavior: Clip.none, children: [
               ClipRRect(
                 borderRadius: BorderRadius.circular(9),
@@ -1032,7 +1073,6 @@ class _SearchSongRow extends StatelessWidget {
             ]),
             const SizedBox(width: 10),
 
-            // Info
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1098,7 +1138,6 @@ class _SearchSongRow extends StatelessWidget {
             ),
             const SizedBox(width: 8),
 
-            // Right
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               mainAxisSize:       MainAxisSize.min,
@@ -1673,7 +1712,6 @@ class _Divider extends StatelessWidget {
   );
 }
 
-// _PricePill ahora tiene 3 estados: FREE / precio (locked) / OWNED (unlocked paid)
 class _PricePill extends StatelessWidget {
   const _PricePill({
     required this.isPaid,

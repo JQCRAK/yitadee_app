@@ -7,7 +7,6 @@ import '../services/favorites_service.dart';
 import '../widgets/mini_player_bar.dart';
 import 'home_screen.dart';
 import 'search_screen.dart';
-import 'live_screen.dart';
 import 'locker_screen.dart';
 
 class MainScreen extends StatefulWidget {
@@ -23,7 +22,6 @@ class _MainScreenState extends State<MainScreen> {
   final List<Widget> _screens = const [
     HomeScreen(),
     SearchScreen(),
-    LiveScreen(),
     LockerScreen(),
   ];
 
@@ -218,11 +216,6 @@ class _MainScreenState extends State<MainScreen> {
             icon: Icon(Icons.search_outlined),
             activeIcon: Icon(Icons.search),
             label: 'Discover',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.radio_button_checked_outlined),
-            activeIcon: Icon(Icons.radio_button_checked),
-            label: 'LIVE',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.lock_outline),

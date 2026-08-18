@@ -428,6 +428,14 @@ class _SocialLinkTile extends StatelessWidget {
     SocialPlatform.instagram: Icons.camera_alt_rounded,
     SocialPlatform.tiktok: Icons.music_video_rounded,
     SocialPlatform.paypal: Icons.payment_rounded,
+    SocialPlatform.facebook: Icons.facebook_rounded,
+    SocialPlatform.twitter: Icons.alternate_email_rounded,
+    SocialPlatform.spotify: Icons.graphic_eq_rounded,
+    SocialPlatform.soundcloud: Icons.cloud_queue_rounded,
+    SocialPlatform.appleMusic: Icons.apple_rounded,
+    SocialPlatform.discord: Icons.forum_rounded,
+    SocialPlatform.whatsapp: Icons.chat_rounded,
+    SocialPlatform.website: Icons.language_rounded,
   };
 
   @override

@@ -1,6 +1,10 @@
+
+import 'dart:async';
+import 'package:url_launcher/url_launcher.dart';
+import '../models/social_link_model.dart';
+import '../services/social_link_service.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../core/app_theme.dart';
 import '../models/song_model.dart';
 import '../models/album_model.dart';
@@ -8,7 +12,6 @@ import '../services/song_service.dart';
 import '../services/album_service.dart';
 import '../services/player_service.dart';
 import '../services/favorites_service.dart';
-import '../services/merch_banner_service.dart';
 import '../services/purchase_service.dart';
 import 'music/full_player_screen.dart';
 import 'music/album_detail_screen.dart';
@@ -69,8 +72,6 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin {
   late final TabController _tabCtrl;
-  String? _shopifyUrl;
-  bool    _bannerLoaded = false;
 
   @override
   void initState() {
@@ -79,15 +80,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     FavoritesService.instance.loadFavorites();
     PurchaseService.instance.init();
     PurchaseService.instance.addListener(_rebuild);
-    _loadBannerUrl();
   }
 
   void _rebuild() { if (mounted) setState(() {}); }
-
-  Future<void> _loadBannerUrl() async {
-    final url = await MerchBannerService.instance.fetchShopifyUrl();
-    if (mounted) setState(() { _shopifyUrl = url ?? ''; _bannerLoaded = true; });
-  }
 
   @override
   void dispose() {
@@ -104,10 +99,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         child: TabBarView(
           controller: _tabCtrl,
           physics: const NeverScrollableScrollPhysics(),
-          children: [
-            _AllTab(shopifyUrl: _shopifyUrl, bannerLoaded: _bannerLoaded),
-            const _SinglesTab(),
-            const _AlbumsTab(),
+          children: const [
+            _AllTab(),
+            _SinglesTab(),
+            _AlbumsTab(),
           ],
         ),
       ),
@@ -195,145 +190,203 @@ class _RowLabel extends StatelessWidget {
   );
 }
 
-// ─── Merch Banner ─────────────────────────────────────────────────────────────
-class _MerchBanner extends StatefulWidget {
-  const _MerchBanner({required this.shopifyUrl});
-  final String? shopifyUrl;
+// ─── Brand Banner (carrusel: logos + redes sociales) ──────────────────────────
+class _BrandBanner extends StatefulWidget {
+  const _BrandBanner();
   @override
-  State<_MerchBanner> createState() => _MerchBannerState();
+  State<_BrandBanner> createState() => _BrandBannerState();
 }
 
-class _MerchBannerState extends State<_MerchBanner>
-    with SingleTickerProviderStateMixin {
-  static const _images = [
-    'assets/images/merch_banner.png',
-    'assets/images/merch_banner_2.png',
-    'assets/images/merch_banner_3.png',
-  ];
+class _BrandBannerState extends State<_BrandBanner> {
+  final _pageCtrl = PageController();
+  Timer? _timer;
+  List<SocialLinkModel> _links = [];
+  int _page = 0;
 
-  late final AnimationController _ctrl;
-  late final Animation<double>    _fade;
-  late final Animation<Offset>    _slide;
-
-  int  _current   = 0;
-  int  _next      = 1;
-  bool _animating = false;
+  static const _icons = <SocialPlatform, IconData>{
+    SocialPlatform.shopify: Icons.storefront_rounded,
+    SocialPlatform.twitch: Icons.live_tv_rounded,
+    SocialPlatform.youtube: Icons.play_circle_rounded,
+    SocialPlatform.instagram: Icons.camera_alt_rounded,
+    SocialPlatform.tiktok: Icons.music_video_rounded,
+    SocialPlatform.paypal: Icons.payment_rounded,
+    SocialPlatform.facebook: Icons.facebook_rounded,
+    SocialPlatform.twitter: Icons.alternate_email_rounded,
+    SocialPlatform.spotify: Icons.graphic_eq_rounded,
+    SocialPlatform.soundcloud: Icons.cloud_queue_rounded,
+    SocialPlatform.appleMusic: Icons.apple_rounded,
+    SocialPlatform.discord: Icons.forum_rounded,
+    SocialPlatform.whatsapp: Icons.chat_rounded,
+    SocialPlatform.website: Icons.language_rounded,
+  };
 
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 600));
-    _fade  = CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut);
-    _slide = Tween<Offset>(begin: const Offset(0.08, 0), end: Offset.zero)
-        .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic));
-    _ctrl.addStatusListener((status) {
-      if (status == AnimationStatus.completed) {
-        setState(() { _current = _next; _next = (_next + 1) % _images.length; _animating = false; });
-        _ctrl.reset();
-        _startTimer();
-      }
+    _loadLinks();
+  }
+
+  Future<void> _loadLinks() async {
+    final list = await SocialLinkService.instance.fetchAll();
+    if (!mounted) return;
+    setState(() => _links = list);
+    _startAutoScroll();
+  }
+
+  void _startAutoScroll() {
+    _timer?.cancel();
+    final totalPages = 2 + _links.length;
+    if (totalPages <= 1) return;
+    _timer = Timer.periodic(const Duration(seconds: 4), (_) {
+      if (!_pageCtrl.hasClients) return;
+      final next = (_page + 1) % totalPages;
+      _pageCtrl.animateToPage(next,
+          duration: const Duration(milliseconds: 500), curve: Curves.easeOutCubic);
     });
-    WidgetsBinding.instance.addPostFrameCallback((_) => _startTimer());
   }
 
-  void _startTimer() {
-    Future.delayed(const Duration(seconds: 5), () {
-      if (!mounted) return;
-      _triggerTransition();
-    });
-  }
-
-  void _triggerTransition() {
-    if (!mounted || _animating) return;
-    setState(() => _animating = true);
-    _ctrl.forward();
-  }
-
-  @override
-  void dispose() { _ctrl.dispose(); super.dispose(); }
-
-  Future<void> _handleTap(BuildContext ctx) async {
-    final url = widget.shopifyUrl;
-    if (url == null || url.isEmpty) {
-      ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
-        backgroundColor: AppColors.surface,
-        behavior: SnackBarBehavior.floating,
-        margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: AppColors.primary.withValues(alpha: 0.25))),
-        content: Row(children: [
-          ShaderMask(shaderCallback: (b) => const LinearGradient(colors: [AppColors.accent, AppColors.primary]).createShader(b),
-            child: const Icon(Icons.rocket_launch_rounded, color: Colors.white, size: 18)),
-          const SizedBox(width: 10),
-          const Expanded(child: Text('Merch store coming soon! Stay tuned.',
-            style: TextStyle(color: AppColors.textPrimary, fontSize: 12, fontWeight: FontWeight.w600))),
-        ]),
-        duration: const Duration(seconds: 3),
-      ));
-      return;
-    }
-    final uri = Uri.parse(url);
+  Future<void> _openLink(String url) async {
+    final uri = Uri.tryParse(url);
+    if (uri == null) return;
     if (await canLaunchUrl(uri)) await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
   @override
+  void dispose() {
+    _timer?.cancel();
+    _pageCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () => _handleTap(context),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-        child: AspectRatio(
-          aspectRatio: 16 / 5,
-          child: Stack(fit: StackFit.expand, children: [
-            _BannerImage(path: _images[_current], isPaid: widget.shopifyUrl == null || widget.shopifyUrl!.isEmpty),
-            if (_animating)
-              FadeTransition(opacity: _fade, child: SlideTransition(position: _slide,
-                child: _BannerImage(path: _images[_next], isPaid: widget.shopifyUrl == null || widget.shopifyUrl!.isEmpty))),
-            Positioned(bottom: 8, left: 0, right: 0, child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: List.generate(_images.length, (i) {
-                final active = i == (_animating ? _next : _current);
-                return AnimatedContainer(
-                  duration: const Duration(milliseconds: 300),
-                  width: active ? 16 : 6, height: 6,
-                  margin: const EdgeInsets.symmetric(horizontal: 2.5),
-                  decoration: BoxDecoration(
-                    color: active ? AppColors.primary : Colors.white.withValues(alpha: 0.4),
-                    borderRadius: BorderRadius.circular(3)),
-                );
-              }),
+    final totalPages = 2 + _links.length;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      child: Column(children: [
+        SizedBox(
+          height: 100,
+          child: PageView.builder(
+            controller: _pageCtrl,
+            itemCount: totalPages,
+            onPageChanged: (i) => setState(() => _page = i),
+            itemBuilder: (ctx, i) {
+              if (i == 0) return const _YitadeeLogoCard();
+              if (i == 1) return const _GotItMadeLogoCard();
+              final link = _links[i - 2];
+              return _SocialCarouselCard(
+                link: link,
+                icon: _icons[link.platform] ?? Icons.link_rounded,
+                onTap: () => _openLink(link.url),
+              );
+            },
+          ),
+        ),
+        if (totalPages > 1) ...[
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: List.generate(totalPages, (i) => AnimatedContainer(
+              duration: const Duration(milliseconds: 250),
+              margin: const EdgeInsets.symmetric(horizontal: 3),
+              width: i == _page ? 16 : 6,
+              height: 6,
+              decoration: BoxDecoration(
+                color: i == _page ? AppColors.primary : AppColors.surfaceLight,
+                borderRadius: BorderRadius.circular(3),
+              ),
             )),
-          ]),
+          ),
+        ],
+      ]),
+    );
+  }
+}
+
+// ─── Tarjeta de logos (YITADEE a la izquierda y chico,
+
+BoxDecoration _brandCardDecoration() => BoxDecoration(
+  borderRadius: BorderRadius.circular(18),
+  color: Colors.black,
+  border: Border.all(color: AppColors.primary.withValues(alpha: 0.18)),
+  boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.35), blurRadius: 16, offset: const Offset(0, 6))],
+);
+
+// ─── Tarjeta 1: logo YITADEE ────────────────────────────────────────────────
+// ─── Tarjeta 1: logo YITADEE ────────────────────────────────────────────────
+class _YitadeeLogoCard extends StatelessWidget {
+  const _YitadeeLogoCard();
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 24),
+      decoration: _brandCardDecoration(),
+      child: Center(
+        child: SizedBox(
+          height: 80,
+          child: Image.asset('assets/images/yitadee_logo.png', fit: BoxFit.contain),
         ),
       ),
     );
   }
 }
-
-class _BannerImage extends StatelessWidget {
-  const _BannerImage({required this.path, required this.isPaid});
-  final String path; final bool isPaid;
+// ─── Tarjeta 2: logo GOT IT MADE RECORDS ───────────────────────────────────
+class _GotItMadeLogoCard extends StatelessWidget {
+  const _GotItMadeLogoCard();
   @override
-  Widget build(BuildContext context) => Stack(fit: StackFit.expand, children: [
-    Container(
-      decoration: BoxDecoration(borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.45), blurRadius: 18, offset: const Offset(0, 6)),
-          BoxShadow(color: AppColors.primary.withValues(alpha: 0.12), blurRadius: 24, offset: const Offset(0, 4))]),
-      child: ClipRRect(borderRadius: BorderRadius.circular(16), child: Image.asset(path, fit: BoxFit.cover))),
-    if (isPaid)
-      Positioned(top: 10, right: 10, child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.65), borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: AppColors.surfaceLight.withValues(alpha: 0.4))),
-        child: const Text('Coming Soon', style: TextStyle(color: AppColors.textSecondary, fontSize: 9, fontWeight: FontWeight.w700, letterSpacing: 0.5)))),
-  ]);
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+      decoration: _brandCardDecoration(),
+      child: Center(
+        child: SizedBox(
+          height: 120,
+          child: Image.asset('assets/images/got_it_made_logo.png', fit: BoxFit.contain),
+        ),
+      ),
+    );
+  }
+}
+// ─── Tarjeta de red social dentro del carrusel ────────────────────────────────
+class _SocialCarouselCard extends StatelessWidget {
+  const _SocialCarouselCard({required this.link, required this.icon, required this.onTap});
+  final SocialLinkModel link;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 20),
+        decoration: _brandCardDecoration(),
+        child: Row(children: [
+          Container(
+            width: 46, height: 46,
+            decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.black,
+              border: Border.fromBorderSide(BorderSide(color: AppColors.primary, width: 1.4))),
+            child: Icon(icon, color: AppColors.primary, size: 22),
+          ),
+          const SizedBox(width: 14),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+            Text('Follow us on ${link.displayLabel}',
+              style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w800, fontSize: 14)),
+            const SizedBox(height: 4),
+            Text(link.url, style: const TextStyle(color: AppColors.textSecondary, fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis),
+          ])),
+          const Icon(Icons.open_in_new_rounded, color: AppColors.primary, size: 18),
+        ]),
+      ),
+    );
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
 // ALL TAB
 // ══════════════════════════════════════════════════════════════════════════════
 class _AllTab extends StatefulWidget {
-  const _AllTab({required this.shopifyUrl, required this.bannerLoaded});
-  final String? shopifyUrl; final bool bannerLoaded;
+  const _AllTab();
   @override
   State<_AllTab> createState() => _AllTabState();
 }
@@ -403,9 +456,7 @@ class _AllTabState extends State<_AllTab> with AutomaticKeepAliveClientMixin {
   List<Widget> _buildFeedWidgets() {
     final widgets = <Widget>[];
 
-    if (widget.bannerLoaded) {
-      widgets.add(_MerchBanner(shopifyUrl: widget.shopifyUrl));
-    }
+    widgets.add(const _BrandBanner());
 
     int albumIdx = 0;
     int songIdx  = 0;
@@ -446,7 +497,6 @@ class _AllTabState extends State<_AllTab> with AutomaticKeepAliveClientMixin {
     super.build(context);
     if (_loading) return const Center(child: CircularProgressIndicator(color: AppColors.primary, strokeWidth: 2));
     final feedWidgets = _buildFeedWidgets();
-    if (feedWidgets.isEmpty) return const _EmptyState(icon: Icons.music_off_rounded, message: 'No music yet.\nCheck back soon.');
     return RefreshIndicator(
       color: AppColors.primary, backgroundColor: AppColors.surface, onRefresh: _refresh,
       child: ListView.builder(
@@ -490,7 +540,6 @@ class _AlbumMiniCard extends StatelessWidget {
   const _AlbumMiniCard({required this.album});
   final AlbumModel album;
 
-  // An album is effectively free if: not paid OR user has unlocked it
   bool get _isEffectivelyFree =>
       !album.isPaid || PurchaseService.instance.isUnlocked(album.id);
 
@@ -582,7 +631,6 @@ class _FeedSongRow extends StatelessWidget {
   bool get _isActive   => PlayerService.instance.currentSong?.id == song.id;
   bool get _isPlaying  => _isActive && PlayerService.instance.isPlaying;
   bool get _isFav      => FavoritesService.instance.isFavorite(song.id);
-  // Song is locked only if it's paid AND the user has NOT unlocked it
   bool get _isLocked   => song.isPaid && !PurchaseService.instance.isUnlocked(song.id);
 
   void _handleTap(BuildContext ctx) {
@@ -604,7 +652,6 @@ class _FeedSongRow extends StatelessWidget {
       Navigator.of(ctx).push(_slideUp(const FullPlayerScreen()));
       return;
     }
-    // Build queue from unlocked songs only
     final playable = allSongs.where((s) => !s.isPaid || PurchaseService.instance.isUnlocked(s.id)).toList();
     final idx      = playable.indexWhere((s) => s.id == song.id);
     PlayerService.instance.playSong(song, queue: playable, index: idx < 0 ? 0 : idx);
@@ -639,7 +686,6 @@ class _FeedSongRow extends StatelessWidget {
             width: isActive ? 1.2 : 1),
         ),
         child: Row(children: [
-          // ── Cover ────────────────────────────────────────────────
           Stack(clipBehavior: Clip.none, children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(8),
@@ -678,7 +724,6 @@ class _FeedSongRow extends StatelessWidget {
                 : const SizedBox.shrink()),
           ]),
           const SizedBox(width: 10),
-          // ── Info ─────────────────────────────────────────────────
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(song.title,
               style: TextStyle(
@@ -700,7 +745,6 @@ class _FeedSongRow extends StatelessWidget {
             ]),
           ])),
           const SizedBox(width: 8),
-          // ── Controls ─────────────────────────────────────────────
           Column(crossAxisAlignment: CrossAxisAlignment.end, mainAxisSize: MainAxisSize.min, children: [
             _PricePill(isPaid: song.isPaid, price: song.price, isUnlocked: !isLocked),
             const SizedBox(height: 5),
@@ -748,7 +792,6 @@ class _PricePill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Unlocked paid content → show checkmark
     if (isPaid && isUnlocked) {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -762,7 +805,6 @@ class _PricePill extends StatelessWidget {
           Text('OWNED', style: TextStyle(color: Color(0xFF00C37A), fontSize: 8, fontWeight: FontWeight.w900, letterSpacing: 0.5)),
         ]));
     }
-    // Locked paid content → show price
     if (isPaid) {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -772,7 +814,6 @@ class _PricePill extends StatelessWidget {
         child: Text('\$${price.toStringAsFixed(0)}',
           style: const TextStyle(color: AppColors.background, fontSize: 9, fontWeight: FontWeight.w900)));
     }
-    // Free
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
@@ -1155,7 +1196,6 @@ class _FeaturedAlbumCard extends StatelessWidget {
                 SizedBox(width: 4),
                 Text('FEATURED', style: TextStyle(color: AppColors.background, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1)),
               ]))),
-            // Lock overlay if not unlocked
             if (!isUnlocked)
               Positioned.fill(child: Container(color: Colors.black.withValues(alpha: 0.3),
                 child: const Center(child: Icon(Icons.lock_rounded, color: Colors.white54, size: 32)))),
@@ -1284,7 +1324,7 @@ class _PaywallSheet extends StatefulWidget {
   });
 
   final String contentId;
-  final String contentType; // 'album' | 'single'
+  final String contentType;
   final String title;
   final String artistName;
   final String coverUrl;
@@ -1354,12 +1394,10 @@ class _PaywallSheetState extends State<_PaywallSheet> {
           Container(width: 36, height: 4, decoration: BoxDecoration(color: AppColors.surfaceLight, borderRadius: BorderRadius.circular(2))),
           const SizedBox(height: 22),
 
-          // Cover
           ClipRRect(borderRadius: BorderRadius.circular(14),
             child: _CachedCover(url: widget.coverUrl, size: 90)),
           const SizedBox(height: 14),
 
-          // Title
           Text(widget.title,
             style: const TextStyle(color: AppColors.textPrimary, fontSize: 19, fontWeight: FontWeight.w900, letterSpacing: -0.4),
             textAlign: TextAlign.center),
@@ -1368,7 +1406,6 @@ class _PaywallSheetState extends State<_PaywallSheet> {
             style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
           const SizedBox(height: 20),
 
-          // Info card
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(color: AppColors.primary.withValues(alpha: 0.06), borderRadius: BorderRadius.circular(14),
@@ -1387,7 +1424,6 @@ class _PaywallSheetState extends State<_PaywallSheet> {
             ])),
           const SizedBox(height: 18),
 
-          // Error message
           if (_errorMsg != null) ...[
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -1400,7 +1436,6 @@ class _PaywallSheetState extends State<_PaywallSheet> {
             const SizedBox(height: 12),
           ],
 
-          // Buy button
           GestureDetector(
             onTap: _loading ? null : _handleBuy,
             child: AnimatedContainer(
@@ -1418,7 +1453,6 @@ class _PaywallSheetState extends State<_PaywallSheet> {
                     style: const TextStyle(color: AppColors.background, fontWeight: FontWeight.w900, fontSize: 15))))),
           const SizedBox(height: 10),
 
-          // Dismiss
           GestureDetector(
             onTap: () => Navigator.pop(context),
             child: const Padding(padding: EdgeInsets.symmetric(vertical: 6),

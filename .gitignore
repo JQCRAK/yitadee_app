@@ -83,3 +83,5 @@ upload_keystore.jks
 upload_certificate.pem
 android/build/
 
+
+repomix-output.md
